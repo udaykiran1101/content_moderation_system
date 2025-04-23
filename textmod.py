@@ -6,16 +6,13 @@ import numpy as np
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 import pickle
+import os
 
 vocab_size = 10000
 maxlen = 100
 embed_dim = 32
 num_heads = 2
 ff_dim = 64
-
-# Load CSV data
-csv = r'C:\Users\zwano\Downloads\jigsaw-toxic-comment-classification-challenge\train.csv\train.csv'
-df = pd.read_csv(csv)
 
 class tokenAndPositionEmbeddings(layers.Layer):
     def __init__(self, vocab_size, max_len, emb_dim, **kwargs):
@@ -42,8 +39,6 @@ class tokenAndPositionEmbeddings(layers.Layer):
         })
         return config
 
-
-# Define the Transformer block
 class TransformerBlock(layers.Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1, **kwargs):
         super(TransformerBlock, self).__init__(**kwargs)
@@ -81,7 +76,6 @@ class TransformerBlock(layers.Layer):
         })
         return config
 
-# Define the transformer model
 def build_transformer_model(maxlen, vocab_size, embed_dim, num_heads, ff_dim):
     inputs = layers.Input(shape=(maxlen,))
     embedding_layer = tokenAndPositionEmbeddings(vocab_size, maxlen, embed_dim)
@@ -99,40 +93,45 @@ def build_transformer_model(maxlen, vocab_size, embed_dim, num_heads, ff_dim):
     model = keras.Model(inputs=inputs, outputs=outputs)
     return model
 
-# Compile the model
-model = build_transformer_model(maxlen, vocab_size, embed_dim, num_heads, ff_dim)
-model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+def train_model():
+    # Load CSV data
+    csv_path = os.path.join('jigsaw-toxic-comment-classification-challenge', 'train.csv')
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"Training data not found at {csv_path}. Please ensure the dataset is in the correct location.")
 
-texts = df['comment_text'].astype(str).tolist()
-labels = df['toxic'].tolist()  # You can extend this to multi-label later
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as e:
+        print(f"Error loading CSV file: {e}")
+        raise
 
-# Tokenize
-tokenizer = Tokenizer(num_words=vocab_size, oov_token="<OOV>")
-tokenizer.fit_on_texts(texts)
-sequences = tokenizer.texts_to_sequences(texts)
-padded_sequences = pad_sequences(sequences, maxlen=maxlen, padding='post', truncating='post')
+    # Compile the model
+    model = build_transformer_model(maxlen, vocab_size, embed_dim, num_heads, ff_dim)
+    model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])
 
-# Convert to arrays
-x_train_real = np.array(padded_sequences)
-y_train_real = np.array(labels)
+    texts = df['comment_text'].astype(str).tolist()
+    labels = df['toxic'].tolist()
 
-# Retrain model with real data
-model.fit(x_train_real, y_train_real, batch_size=32, epochs=1)
+    # Tokenize
+    tokenizer = Tokenizer(num_words=vocab_size, oov_token="<OOV>")
+    tokenizer.fit_on_texts(texts)
+    sequences = tokenizer.texts_to_sequences(texts)
+    padded_sequences = pad_sequences(sequences, maxlen=maxlen, padding='post', truncating='post')
 
-# Function to predict on new input
-def predict_text(text):
-    seq = tokenizer.texts_to_sequences([text])
-    padded = pad_sequences(seq, maxlen=maxlen, padding='post', truncating='post')
-    pred = model.predict(padded)[0]
-    label = np.argmax(pred)
-    confidence = pred[label]
+    # Convert to arrays
+    x_train_real = np.array(padded_sequences)
+    y_train_real = np.array(labels)
 
-    if label == 0:
-        print(f"✅ Safe comment ({confidence:.2f} confidence)")
-    else:
-        print(f"⚠️ Toxic comment detected! ({confidence:.2f} confidence)")
+    # Train model with real data
+    model.fit(x_train_real, y_train_real, batch_size=32, epochs=1)
 
-model.save("moderation_model.h5")
+    # Save the model and tokenizer
+    model.save("moderation_model.h5")
+    with open("tokenizer.pkl", "wb") as f:
+        pickle.dump(tokenizer, f)
 
-with open("tokenizer.pkl", "wb") as f:
-    pickle.dump(tokenizer, f)
+    return model, tokenizer
+
+# Only train the model if this script is run directly
+if __name__ == "__main__":
+    train_model()

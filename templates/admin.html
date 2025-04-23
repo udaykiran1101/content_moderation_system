@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Review Panel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .flagged-content {
+            background-color: #fff3cd;
+        }
+        .approved-content {
+            background-color: #d4edda;
+        }
+        .rejected-content {
+            background-color: #f8d7da;
+        }
+        .feedback-badge {
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4">Admin Review Panel</h1>
+        
+        <!-- Filter Controls -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <form method="GET" action="{{ url_for('admin_panel') }}" class="input-group">
+                    <input type="text" class="form-control" name="search" placeholder="Search content..." value="{{ request.args.get('search', '') }}">
+                    <button class="btn btn-outline-secondary" type="submit">Search</button>
+                </form>
+            </div>
+            <div class="col-md-6">
+                <form method="GET" action="{{ url_for('admin_panel') }}" class="d-flex">
+                    <select class="form-select" name="status" onchange="this.form.submit()">
+                        <option value="all" {% if not request.args.get('status') %}selected{% endif %}>All Status</option>
+                        <option value="pending" {% if request.args.get('status') == 'pending' %}selected{% endif %}>Pending Review</option>
+                        <option value="approved" {% if request.args.get('status') == 'approved' %}selected{% endif %}>Approved</option>
+                        <option value="rejected" {% if request.args.get('status') == 'rejected' %}selected{% endif %}>Rejected</option>
+                    </select>
+                </form>
+            </div>
+        </div>
+
+        <!-- Content Table -->
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Content</th>
+                        <th>Date Flagged</th>
+                        <th>Confidence Score</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in content %}
+                    <tr class="{{ 'flagged-content' if item[4] == 'pending' else 'approved-content' if item[4] == 'approved' else 'rejected-content' }}">
+                        <td>{{ item[0] }}</td>
+                        <td>{{ item[1] }}</td>
+                        <td>{{ item[2] }}</td>
+                        <td>{{ "%.2f"|format(item[3] * 100) }}%</td>
+                        <td>{{ item[4] }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="openActionModal({{ item[0] }}, '{{ item[1] }}')">
+                                Review
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Action Modal -->
+    <div class="modal fade" id="actionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Review Content</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Content</label>
+                        <p id="modalContent" class="form-control-plaintext"></p>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Feedback</label>
+                        <div id="feedbackDetails" class="feedback-details">
+                            <!-- Feedback will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Action</label>
+                        <select class="form-select" id="actionSelect">
+                            <option value="approved">Approve</option>
+                            <option value="rejected">Reject</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" id="actionNotes" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="submitAction">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentContentId = null;
+
+        function openActionModal(id, content) {
+            currentContentId = id;
+            document.getElementById('modalContent').textContent = content;
+            
+            // Load feedback details
+            fetch(`/admin/get_feedback/${id}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Received feedback data:', data);  // Debug log
+                    const feedbackDiv = document.getElementById('feedbackDetails');
+                    
+                    if (!data.success) {
+                        feedbackDiv.innerHTML = `<p class="text-danger">Error: ${data.error}</p>`;
+                        return;
+                    }
+                    
+                    if (data.feedback && data.feedback.length > 0) {
+                        console.log('Processing feedback items:', data.feedback);  // Debug log
+                        let feedbackHtml = '<div class="list-group">';
+                        data.feedback.forEach(f => {
+                            console.log('Processing feedback item:', f);  // Debug log
+                            const badgeClass = f.user_feedback === 'agree' ? 'bg-success' : 'bg-danger';
+                            const feedbackText = f.feedback_text ? `<p class="mt-2">${f.feedback_text}</p>` : '';
+                            const date = new Date(f.date_submitted).toLocaleString();
+                            feedbackHtml += `
+                                <div class="list-group-item">
+                                    <span class="badge ${badgeClass}">${f.user_feedback}</span>
+                                    ${feedbackText}
+                                    <small class="text-muted">${date}</small>
+                                </div>
+                            `;
+                        });
+                        feedbackHtml += '</div>';
+                        feedbackDiv.innerHTML = feedbackHtml;
+                    } else {
+                        console.log('No feedback items found');  // Debug log
+                        feedbackDiv.innerHTML = '<p class="text-muted">No feedback received</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading feedback:', error);
+                    document.getElementById('feedbackDetails').innerHTML = 
+                        '<p class="text-danger">Error loading feedback: ' + error.message + '</p>';
+                });
+            
+            const modal = new bootstrap.Modal(document.getElementById('actionModal'));
+            modal.show();
+        }
+
+        document.getElementById('submitAction').addEventListener('click', function() {
+            const action = document.getElementById('actionSelect').value;
+            const notes = document.getElementById('actionNotes').value;
+            
+            // Send the update to the server
+            fetch('/admin/update_status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `content_id=${currentContentId}&status=${action}&notes=${encodeURIComponent(notes)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Reload the page to show updated content
+                    window.location.reload();
+                }
+            });
+            
+            bootstrap.Modal.getInstance(document.getElementById('actionModal')).hide();
+        });
+    </script>
+</body>
+</html> 
