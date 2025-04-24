@@ -90,6 +90,13 @@
             margin-top: 1rem;
             display: none;
         }
+
+        .preview-image {
+            max-width: 300px;
+            max-height: 300px;
+            margin-top: 1rem;
+            display: none;
+        }
     </style>
 </head>
 
@@ -106,13 +113,26 @@
 
     <div class="container">
 
-        <!-- Content Submission Section -->
+        <!-- Text Content Submission Section -->
         <div class="section">
-            <h2>Submit New Content</h2>
-            <form action="/predict" method="POST" enctype="multipart/form-data">
+            <h2>Submit Text Content</h2>
+            <form action="/predict/text" method="POST">
                 <label for="textContent">Text Content:</label>
                 <textarea name="textContent" id="textContent" placeholder="Enter your message..." required></textarea>
 
+                <button type="submit">Submit for Moderation</button>
+            </form>
+        </div>
+
+        <!-- Image Content Submission Section -->
+        <div class="section">
+            <h2>Submit Image Content</h2>
+            <form action="/predict/image" method="POST" enctype="multipart/form-data">
+                <label for="image">Select Image:</label>
+                <input type="file" name="image" id="image" accept="image/*" required>
+                
+                <img id="imagePreview" class="preview-image" src="#" alt="Preview">
+                
                 <button type="submit">Submit for Moderation</button>
             </form>
         </div>
@@ -122,7 +142,11 @@
             <h2>Moderation Result</h2>
             <p>{{ prediction_text }}</p>
             
-            {% if content_id and is_inappropriate %}
+            {% if image_path %}
+            <img src="{{ image_path }}" alt="Moderated Image" class="preview-image" style="display: block;">
+            {% endif %}
+            
+            {% if (content_id or image_id) and is_inappropriate %}
             <div class="feedback-section">
                 <h3>Provide Feedback</h3>
                 <p>Do you agree with this moderation decision?</p>
@@ -135,6 +159,7 @@
                 <div id="feedbackForm" class="feedback-form">
                     <form action="/feedback" method="POST">
                         <input type="hidden" name="content_id" value="{{ content_id }}">
+                        <input type="hidden" name="image_id" value="{{ image_id }}">
                         <input type="hidden" name="feedback_type" id="feedbackType">
                         <div class="mb-3">
                             <label for="feedbackText" class="form-label">Additional Comments (optional):</label>
@@ -159,6 +184,22 @@
             // Hide the buttons
             document.querySelector('.feedback-buttons').style.display = 'none';
         }
+
+        // Image preview functionality
+        document.getElementById('image').addEventListener('change', function(e) {
+            const preview = document.getElementById('imagePreview');
+            const file = e.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+            }
+
+            if (file) {
+                reader.readAsDataURL(file);
+            }
+        });
     </script>
 </body>
 

@@ -18,6 +18,11 @@
         .feedback-badge {
             margin-left: 5px;
         }
+        .content-image {
+            max-width: 200px;
+            max-height: 200px;
+            object-fit: contain;
+        }
     </style>
 </head>
 <body>
@@ -50,6 +55,7 @@
                 <thead>
                     <tr>
                         <th>ID</th>
+                        <th>Type</th>
                         <th>Content</th>
                         <th>Date Flagged</th>
                         <th>Confidence Score</th>
@@ -59,14 +65,21 @@
                 </thead>
                 <tbody>
                     {% for item in content %}
-                    <tr class="{{ 'flagged-content' if item[4] == 'pending' else 'approved-content' if item[4] == 'approved' else 'rejected-content' }}">
-                        <td>{{ item[0] }}</td>
-                        <td>{{ item[1] }}</td>
-                        <td>{{ item[2] }}</td>
-                        <td>{{ "%.2f"|format(item[3] * 100) }}%</td>
-                        <td>{{ item[4] }}</td>
+                    <tr class="{{ 'flagged-content' if item.status == 'pending' else 'approved-content' if item.status == 'approved' else 'rejected-content' }}">
+                        <td>{{ item.id }}</td>
+                        <td>{{ item.type }}</td>
                         <td>
-                            <button class="btn btn-sm btn-primary" onclick="openActionModal({{ item[0] }}, '{{ item[1] }}')">
+                            {% if item.type == 'text' %}
+                                {{ item.content }}
+                            {% else %}
+                                <img src="{{ item.content }}" alt="Moderated Image" class="content-image">
+                            {% endif %}
+                        </td>
+                        <td>{{ item.date }}</td>
+                        <td>{{ "%.2f"|format(item.confidence * 100) }}%</td>
+                        <td>{{ item.status }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="openActionModal({{ item.id }}, '{{ item.content }}', '{{ item.type }}')">
                                 Review
                             </button>
                         </td>
@@ -88,7 +101,9 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">Content</label>
-                        <p id="modalContent" class="form-control-plaintext"></p>
+                        <div id="modalContent">
+                            <!-- Content will be loaded here -->
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Feedback</label>
@@ -119,10 +134,18 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let currentContentId = null;
+        let currentContentType = null;
 
-        function openActionModal(id, content) {
+        function openActionModal(id, content, type) {
             currentContentId = id;
-            document.getElementById('modalContent').textContent = content;
+            currentContentType = type;
+            
+            const contentDiv = document.getElementById('modalContent');
+            if (type === 'text') {
+                contentDiv.innerHTML = `<p class="form-control-plaintext">${content}</p>`;
+            } else {
+                contentDiv.innerHTML = `<img src="${content}" alt="Moderated Image" class="content-image">`;
+            }
             
             // Load feedback details
             fetch(`/admin/feedback/${id}`)
@@ -180,7 +203,7 @@
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `content_id=${currentContentId}&status=${action}&notes=${encodeURIComponent(notes)}`
+                body: `content_id=${currentContentId}&content_type=${currentContentType}&status=${action}&notes=${encodeURIComponent(notes)}`
             })
             .then(response => response.json())
             .then(data => {
